@@ -27,7 +27,9 @@ jobs:
         # 이 단계 없으면 docker build할 소스 코드가 없음
         uses: actions/checkout@v4
 
+      # 현재 커밋 SHA 앞 7자리로 IMAGE_TAG 생성
       - name: Create IMAGE_TAG with GITHUB_SHA
+        id: image_tag
         run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       # AWS 인증 (OIDC)
@@ -46,15 +48,14 @@ jobs:
         # → Docker가 AWS ECR에 push할 수 있도록 로그인 처리
         uses: aws-actions/amazon-ecr-login@v2
       
-      # 변경된 폴더 감지
-      - name: detect changed services
+      # dorny/paths-filter@v3
+      # push에서 변경된 파일 목록을 분석 지정한 경로에 변경이 있으면 true/false 자동 생성
+      # changes.outputs.member 같은 값으로 접근 가능
+      # push 이벤트일 때만 변경된 서비스 감지
+      - name: Detect changed services
+        if: github.event_name == 'push'
         id: changes
-
-        # dorny/paths-filter@v3
-        # push에서 변경된 파일 목록을 분석 지정한 경로에 변경이 있으면 true/false 자동 생성
-        # changes.outputs.member 같은 값으로 접근 가능
         uses: dorny/paths-filter@v3
-
         with:
           filters: |
             gateway:
@@ -66,11 +67,12 @@ jobs:
             product:
               - 'msa/product/**'
 
-      # 변경 없으면 종료
+      # push 이벤트에서 변경 없으면 종료
       - name: stop if no service changed
         # 모든 서비스가 false일 경우 실행
         # 불필요한 docker build 방지
         if: |
+          github.event_name == 'push' &&
           steps.changes.outputs.gateway != 'true' &&
           steps.changes.outputs.member != 'true' &&
           steps.changes.outputs.ordering != 'true' &&
@@ -79,17 +81,21 @@ jobs:
           echo "No service directory changed. Skip build."
           exit 0
 
-      # yq 설치
+      # GitOps manifest 수정이 필요한 push 이벤트일 때만 yq 설치
       - name: Install yq
+        if: github.event_name == 'push'
         run: |
           sudo wget -O /usr/local/bin/yq \
             https://github.com/mikefarah/yq/releases/download/v4.44.2/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
+      # workflow_dispatch: 전체 이미지 push
+      # push: 변경된 서비스만 이미지 push
+
       # APIGateway build/push
       - name: Build and push apigateway image
-        if: steps.changes.outputs.gateway == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.gateway == 'true'
         env:
           REPOSITORY: apigateway
           DOCKERFILE_PATH: ./msa/apigateway/Dockerfile
@@ -103,7 +109,7 @@ jobs:
 
       # Member build/push
       - name: Build and push member image
-        if: steps.changes.outputs.member == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.member == 'true'
         env:
           REPOSITORY: member-service
           DOCKERFILE_PATH: ./msa/member/Dockerfile
@@ -117,7 +123,7 @@ jobs:
 
       # Ordering build/push
       - name: Build and push ordering image
-        if: steps.changes.outputs.ordering == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.ordering == 'true'
         env:
           REPOSITORY: ordering-service
           DOCKERFILE_PATH: ./msa/ordering/Dockerfile
@@ -131,7 +137,7 @@ jobs:
 
       # Product build/push
       - name: Build and push product image
-        if: steps.changes.outputs.product == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.product == 'true'
         env:
           REPOSITORY: product-service
           DOCKERFILE_PATH: ./msa/product/Dockerfile
@@ -143,8 +149,10 @@ jobs:
 
           docker push ${ECR_REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
 
+      # 아래부터는 push 이벤트일 때만 수행
       # GitOps repo checkout
       - name: Checkout GitOps repo
+        if: github.event_name == 'push'
         uses: actions/checkout@v4
         with:
           repository: ${{ env.GITOPS_REPO }}
@@ -154,9 +162,9 @@ jobs:
 
       # APIGateway manifest tag 수정
       - name: Update apigateway manifest
-        if: steps.changes.outputs.gateway == 'true'
+        if: github.event_name == 'push' && steps.changes.outputs.gateway == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/apigateway:$IMAGE_TAG 
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/apigateway:${{ steps.image_tag.outputs.value }}
           FILE_PATH: gitops/apps/apigateway/depl.yaml
         run: |
           yq -i '
@@ -165,9 +173,9 @@ jobs:
 
       # Member manifest tag 수정
       - name: Update member manifest
-        if: steps.changes.outputs.member == 'true'
+        if: github.event_name == 'push' && steps.changes.outputs.member == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/member-service:$IMAGE_TAG 
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/member-service:${{ steps.image_tag.outputs.value }}
           FILE_PATH: gitops/apps/member/depl.yaml
         run: |
           yq -i '
@@ -176,9 +184,9 @@ jobs:
 
       # Ordering manifest tag 수정
       - name: Update ordering manifest
-        if: steps.changes.outputs.ordering == 'true'
+        if: github.event_name == 'push' && steps.changes.outputs.ordering == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/ordering-service:$IMAGE_TAG 
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/ordering-service:${{ steps.image_tag.outputs.value }}
           FILE_PATH: gitops/apps/ordering/depl.yaml
         run: |
           yq -i '
@@ -187,9 +195,9 @@ jobs:
 
       # Product manifest tag 수정
       - name: Update product manifest
-        if: steps.changes.outputs.product == 'true'
+        if: github.event_name == 'push' && steps.changes.outputs.product == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:$IMAGE_TAG 
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:${{ steps.image_tag.outputs.value }}
           FILE_PATH: gitops/apps/product/depl.yaml
         run: |
           yq -i '
@@ -198,6 +206,7 @@ jobs:
 
       # Git 설정
       - name: Configure git identity
+        if: github.event_name == 'push'
         working-directory: gitops
         run: |
           git config user.name "${{ vars.GITOPS_COMMIT_USER_NAME }}"
@@ -205,6 +214,7 @@ jobs:
 
       # 변경사항 commit/push
       - name: Commit and push manifest changes
+        if: github.event_name == 'push'
         working-directory: gitops
         run: |
           git add apps/apigateway/depl.yaml \
