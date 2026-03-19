@@ -36,6 +36,9 @@ target/
 *.war
 *.class
 
+# Gradle wrapper는 포함
+!**/gradle-wrapper.jar
+
 # === Go build ===
 bin/
 pkg/
