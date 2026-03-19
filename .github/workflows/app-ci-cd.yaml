@@ -1,6 +1,7 @@
 name: app-ci-cd pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -155,7 +156,7 @@ jobs:
       - name: Update apigateway manifest
         if: steps.changes.outputs.gateway == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/apigateway:${{ env.IMAGE_TAG }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/apigateway:$IMAGE_TAG 
           FILE_PATH: gitops/apps/apigateway/depl.yaml
         run: |
           yq -i '
@@ -166,7 +167,7 @@ jobs:
       - name: Update member manifest
         if: steps.changes.outputs.member == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/member-service:${{ env.IMAGE_TAG }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/member-service:$IMAGE_TAG 
           FILE_PATH: gitops/apps/member/depl.yaml
         run: |
           yq -i '
@@ -177,7 +178,7 @@ jobs:
       - name: Update ordering manifest
         if: steps.changes.outputs.ordering == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/ordering-service:${{ env.IMAGE_TAG }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/ordering-service:$IMAGE_TAG 
           FILE_PATH: gitops/apps/ordering/depl.yaml
         run: |
           yq -i '
@@ -188,7 +189,7 @@ jobs:
       - name: Update product manifest
         if: steps.changes.outputs.product == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:${{ env.IMAGE_TAG }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:$IMAGE_TAG 
           FILE_PATH: gitops/apps/product/depl.yaml
         run: |
           yq -i '
