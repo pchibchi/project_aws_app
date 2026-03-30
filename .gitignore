@@ -8,13 +8,6 @@ Thumbs.db
 *.swp
 *.swo
 
-# === Logs ===
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
 # === Environment variables ===
 .env
 .env.*
@@ -26,10 +19,6 @@ build/
 out/
 target/
 
-# === Dependency directories ===
-node_modules/
-vendor/
-
 # === Java / Spring ===
 target/
 *.jar
@@ -39,22 +28,10 @@ target/
 # Gradle wrapper는 포함
 !**/gradle-wrapper.jar
 
-# === Go build ===
-bin/
-pkg/
-
-# === Docker ===
-.dockerignore
-
 # === Kubernetes local configs ===
 .kube/
 kubeconfig
 *.kubeconfig
-
-# === Test / coverage ===
-coverage/
-*.cover
-*.coverprofile
 
 # === Temporary files ===
 tmp/
@@ -67,13 +44,3 @@ secrets/
 *.key
 *.pem
 *.crt
-
-# Spring profile 별 config
-application-*.yml
-application-*.yaml
-application-*.properties
-
-# 단, 기본 설정은 유지
-!application.yml
-!application.yaml
-!application.properties
