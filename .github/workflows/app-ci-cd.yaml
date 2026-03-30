@@ -66,6 +66,8 @@ jobs:
               - 'msa/ordering/**'
             product:
               - 'msa/product/**'
+            frontend:
+              - 'msa/frontend/**'
 
       # push 이벤트에서 변경 없으면 종료
       - name: stop if no service changed
@@ -76,7 +78,8 @@ jobs:
           steps.changes.outputs.gateway != 'true' &&
           steps.changes.outputs.member != 'true' &&
           steps.changes.outputs.ordering != 'true' &&
-          steps.changes.outputs.product != 'true'
+          steps.changes.outputs.product != 'true' &&
+          steps.changes.outputs.frontend != 'true'
         run: |
           echo "No service directory changed. Skip build."
           exit 0
@@ -149,6 +152,20 @@ jobs:
 
           docker push ${ECR_REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
 
+      # Frontend build/push
+      - name: Build and push frontend image
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.frontend == 'true'
+        env:
+          REPOSITORY: frontend-service
+          DOCKERFILE_PATH: ./msa/frontend/Dockerfile
+          BUILD_CONTEXT: ./msa/frontend
+        run: |
+          docker build \
+            -t ${ECR_REGISTRY}/${REPOSITORY}:${IMAGE_TAG} \
+            -f ${DOCKERFILE_PATH} ${BUILD_CONTEXT}
+
+          docker push ${ECR_REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
+
       # 아래부터는 push 이벤트일 때만 수행
       # GitOps repo checkout
       - name: Checkout GitOps repo
@@ -164,7 +181,7 @@ jobs:
       - name: Update apigateway manifest
         if: github.event_name == 'push' && steps.changes.outputs.gateway == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/apigateway:${{ steps.image_tag.outputs.value }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/apigateway:${{ env.IMAGE_TAG }}
           FILE_PATH: gitops/apps/apigateway/depl.yaml
         run: |
           yq -i '
@@ -175,7 +192,7 @@ jobs:
       - name: Update member manifest
         if: github.event_name == 'push' && steps.changes.outputs.member == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/member-service:${{ steps.image_tag.outputs.value }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/member-service:${{ env.IMAGE_TAG }}
           FILE_PATH: gitops/apps/member/depl.yaml
         run: |
           yq -i '
@@ -186,7 +203,7 @@ jobs:
       - name: Update ordering manifest
         if: github.event_name == 'push' && steps.changes.outputs.ordering == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/ordering-service:${{ steps.image_tag.outputs.value }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/ordering-service:${{ env.IMAGE_TAG }}
           FILE_PATH: gitops/apps/ordering/depl.yaml
         run: |
           yq -i '
@@ -197,8 +214,19 @@ jobs:
       - name: Update product manifest
         if: github.event_name == 'push' && steps.changes.outputs.product == 'true'
         env:
-          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:${{ steps.image_tag.outputs.value }}
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/product-service:${{ env.IMAGE_TAG }}
           FILE_PATH: gitops/apps/product/depl.yaml
+        run: |
+          yq -i '
+            .spec.template.spec.containers[].image = strenv(FULL_IMAGE)
+          ' "${FILE_PATH}"
+
+      # Frontend manifest tag 수정
+      - name: Update frontend manifest
+        if: github.event_name == 'push' && steps.changes.outputs.frontend == 'true'
+        env:
+          FULL_IMAGE: ${{ env.ECR_REGISTRY }}/frontend-service:${{ env.IMAGE_TAG }}
+          FILE_PATH: gitops/apps/frontend/depl.yaml
         run: |
           yq -i '
             .spec.template.spec.containers[].image = strenv(FULL_IMAGE)
@@ -220,7 +248,8 @@ jobs:
           git add apps/apigateway/depl.yaml \
                   apps/member/depl.yaml \
                   apps/ordering/depl.yaml \
-                  apps/product/depl.yaml
+                  apps/product/depl.yaml \
+                  apps/frontend/depl.yaml
 
           if git diff --cached --quiet; then
             echo "No manifest changes to commit."
