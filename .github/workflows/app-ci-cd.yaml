@@ -5,6 +5,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'msa/apigateway/**'
+      - 'msa/member/**'
+      - 'msa/ordering/**'
+      - 'msa/product/**'
+      - 'msa/frontend/**'
 
 env:
   ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
